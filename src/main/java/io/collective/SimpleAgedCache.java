@@ -51,14 +51,14 @@ public class SimpleAgedCache {
     public Object get(Object key) {
         removeExpiredEntries();
 
-        return entries.get(key);
+        return entries.getOrDefault(key, CacheEntry.NULL).value;
     }
 
     private void removeExpiredEntries() {
         var now = clock.instant();
         var head = expirationQueue.peek();
 
-        while (head != null && entries.get(head).validTo.isAfter(now)) {
+        while (head != null && entries.get(head).validTo.isBefore(now)) {
             entries.remove(expirationQueue.poll());
             head = expirationQueue.peek();
         }
@@ -68,6 +68,6 @@ public class SimpleAgedCache {
             Object value,
             Instant validTo
     ) {
-
+        public static final CacheEntry NULL = new CacheEntry(null, Instant.MIN);
     }
 }
