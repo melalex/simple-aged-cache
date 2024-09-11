@@ -2,50 +2,65 @@ package io.collective;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class SimpleAgedCache {
 
     private final Clock clock;
-    private final Map<Object, CacheEntry> cacheEntryMap = new HashMap<>();
+
+    private final Map<Object, CacheEntry> entries = new HashMap<>();
+    private final Queue<Object> expirationQueue = new PriorityQueue<>(Comparator.comparing(it -> entries.get(it).validTo));
 
     public SimpleAgedCache(Clock clock) {
         this.clock = clock;
     }
 
     public SimpleAgedCache() {
-        this(Clock.systemUTC());
+        this(Clock.systemDefaultZone());
     }
 
     public void put(Object key, Object value, int retentionInMillis) {
-        var now = clock.instant();
+        var expiryTime = clock.instant().plusMillis(retentionInMillis);
+        var entry = new CacheEntry(value, expiryTime);
 
-        cacheEntryMap.put(key, new CacheEntry(value, now.plusMillis(retentionInMillis)));
+        var old = entries.put(key, entry);
+
+        if (old == null) {
+            expirationQueue.add(key);
+        } else {
+            var newValues = expirationQueue.stream()
+                    .toList();
+
+            expirationQueue.clear();
+            expirationQueue.addAll(newValues);
+        }
     }
 
     public boolean isEmpty() {
-        return size() == 0;
+        removeExpiredEntries();
+
+        return entries.isEmpty();
     }
 
     public int size() {
-        var now = clock.instant();
+        removeExpiredEntries();
 
-        return (int) cacheEntryMap.values().stream()
-                .filter(it -> it.validTo.isAfter(now))
-                .count();
+        return entries.size();
     }
 
     public Object get(Object key) {
-        var now = clock.instant();
-        var value = cacheEntryMap.get(key);
+        removeExpiredEntries();
 
-        if (value == null) {
-            return null;
-        } else if (value.validTo.isAfter(now)) {
-            return value.value;
-        } else {
-            return null;
+        return entries.get(key);
+    }
+
+    private void removeExpiredEntries() {
+        var now = clock.instant();
+        var head = expirationQueue.peek();
+
+        while (head != null && entries.get(head).validTo.isAfter(now)) {
+            entries.remove(expirationQueue.poll());
+            head = expirationQueue.peek();
         }
     }
 
@@ -53,5 +68,6 @@ public class SimpleAgedCache {
             Object value,
             Instant validTo
     ) {
+
     }
 }
